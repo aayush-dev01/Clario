@@ -1,0 +1,11 @@
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -f
+      - cloudrun/app.Dockerfile
+      - -t
+      - asia-south1-docker.pkg.dev/the-axiom-493005-u6/legalease-repo/clario-app
+      - .
+images:
+  - asia-south1-docker.pkg.dev/the-axiom-493005-u6/legalease-repo/clario-app
