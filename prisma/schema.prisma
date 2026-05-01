@@ -1,0 +1,222 @@
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// ---------------------------------------------------------
+// ENUMS
+// ---------------------------------------------------------
+enum Role {
+  LEARNER
+  TEACHER
+  ADMIN
+}
+
+enum BookingStatus {
+  PENDING
+  CONFIRMED
+  COMPLETED
+  CANCELED_BY_LEARNER
+  CANCELED_BY_TEACHER
+}
+
+enum PaymentStatus {
+  UNPAID
+  HELD_IN_ESCROW
+  PAID_OUT
+  REFUNDED
+}
+
+// ---------------------------------------------------------
+// MODELS
+// ---------------------------------------------------------
+model User {
+  id             String   @id // Clerk User ID
+  email          String   @unique
+  firstName      String
+  lastName       String
+  imageUrl       String?
+  role           Role     @default(LEARNER)
+  timezone       String   @default("UTC")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  learnerProfile LearnerProfile?
+  teacherProfile TeacherProfile?
+  messagesSent   Message[]
+  notifications  Notification[]
+  feedbacksGiven Feedback[] @relation("FeedbackAuthor")
+}
+
+model LearnerProfile {
+  id           String    @id @default(uuid())
+  userId       String    @unique
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  goals        String?   @db.Text
+  onboardingCompleted Boolean @default(false)
+  stripeCustId String?   @unique
+  
+  bookings     Booking[]
+  feedbacks    Feedback[] 
+}
+
+model TeacherProfile {
+  id               String    @id @default(uuid())
+  userId           String    @unique
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  username         String    @unique
+  bio              String    @db.Text
+  hourlyRate       Decimal   @db.Decimal(10, 2)
+  isAccepting      Boolean   @default(true)
+  sessionDurations Int[]     @default([45, 60])
+  bufferMinutes    Int       @default(15)
+  advanceBookingDays Int     @default(14)
+  cancellationNoticeHours Int @default(24)
+  onboardingCompleted Boolean @default(false)
+  stripeConnectId  String?   @unique
+  
+  topics           Topic[]   @relation("TeacherTopics")
+  bookings         Booking[]
+  feedbacks        Feedback[]
+  availability     TeacherAvailability[]
+}
+
+model TeacherAvailability {
+  id         String   @id @default(uuid())
+  teacherId  String
+  teacher    TeacherProfile @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+
+  // 0=Sun ... 6=Sat
+  dayOfWeek  Int
+  // minutes from 00:00
+  startMin   Int
+  endMin     Int
+  // slot size in minutes (e.g. 30/60)
+  slotMin    Int      @default(60)
+
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([teacherId, dayOfWeek])
+}
+
+model Topic {
+  id        String           @id @default(uuid())
+  name      String           @unique
+  teachers  TeacherProfile[] @relation("TeacherTopics")
+}
+
+model Booking {
+  id             String        @id @default(uuid())
+  teacherId      String
+  learnerId      String
+  teacher        TeacherProfile @relation(fields: [teacherId], references: [id])
+  learner        LearnerProfile @relation(fields: [learnerId], references: [id])
+  
+  startTime      DateTime
+  endTime        DateTime
+  status         BookingStatus @default(PENDING)
+  notes          String?       @db.Text
+  
+  payment        Payment?
+  session        Session?
+  feedbacks      Feedback[]
+
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  @@index([teacherId, startTime])
+  @@index([learnerId])
+}
+
+model Payment {
+  id                    String        @id @default(uuid())
+  bookingId             String        @unique
+  booking               Booking       @relation(fields: [bookingId], references: [id])
+  stripePaymentIntentId String        @unique
+  amount                Decimal       @db.Decimal(10, 2)
+  platformFee           Decimal       @db.Decimal(10, 2)
+  status                PaymentStatus @default(UNPAID)
+  createdAt             DateTime      @default(now())
+}
+
+model Session {
+  id             String          @id @default(uuid())
+  bookingId      String          @unique
+  booking        Booking         @relation(fields: [bookingId], references: [id])
+  startedAt      DateTime?
+  endedAt        DateTime?
+  roomIdentifier String          @unique // Used by Socket/Signaling
+  isRecorded     Boolean         @default(false)
+  
+  summary        SessionSummary?
+  messages       Message[]
+}
+
+model SessionSummary {
+  id             String       @id @default(uuid())
+  sessionId      String       @unique
+  session        Session      @relation(fields: [sessionId], references: [id])
+  transcriptUrl  String?
+  aiGeneratedNotes String     @db.Text
+  
+  actionItems    ActionItem[]
+}
+
+model ActionItem {
+  id               String         @id @default(uuid())
+  sessionSummaryId String
+  sessionSummary   SessionSummary @relation(fields: [sessionSummaryId], references: [id])
+  task             String
+  isCompleted      Boolean        @default(false)
+}
+
+model Feedback {
+  id             String         @id @default(uuid())
+  bookingId      String
+  booking        Booking        @relation(fields: [bookingId], references: [id])
+  authorId       String
+  author         User           @relation("FeedbackAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  teacherId      String
+  learnerId      String
+  teacher        TeacherProfile @relation(fields: [teacherId], references: [id])
+  learner        LearnerProfile @relation(fields: [learnerId], references: [id])
+  
+  rating         Int            // 1-5 scale
+  comments       String?        @db.Text
+  createdAt      DateTime       @default(now())
+
+  @@index([teacherId])
+  @@index([learnerId])
+  @@unique([bookingId, authorId])
+}
+
+model Message {
+  id             String   @id @default(uuid())
+  sessionId      String
+  senderId       String
+  session        Session  @relation(fields: [sessionId], references: [id])
+  sender         User     @relation(fields: [senderId], references: [id])
+  content        String   @db.Text
+  createdAt      DateTime @default(now())
+
+  @@index([sessionId])
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      String   // E.g., BOOKING_CONFIRMED, SESSION_START, ACTION_ITEM_DUE
+  title     String
+  message   String
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
