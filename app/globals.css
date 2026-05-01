@@ -1,0 +1,44 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --warm-white: #F9F8F6;
+  --ink: #1A1814;
+  --ink-muted: #6B6560;
+  --purple-accent: #6B5CE7;
+  --fog-white: rgba(249, 248, 246, 0.85);
+}
+
+@layer utilities {
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+@keyframes fog-drift-x {
+  0%, 100% { transform: translateX(-3%); }
+  50% { transform: translateX(3%); }
+}
+
+@keyframes grain-shift {
+  0% { transform: translate3d(-2%, -2%, 0); }
+  50% { transform: translate3d(2%, 1%, 0); }
+  100% { transform: translate3d(-1%, 2%, 0); }
+}
+
+@layer utilities {
+  .font-display {
+    font-family: var(--font-display), ui-serif, Georgia, serif;
+  }
+}
+
+/* Session timer pulse */
+@keyframes timer-pulse {
+  0%, 100% { opacity: 0.8; }
+  50% { opacity: 1; }
+}
